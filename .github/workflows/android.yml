@@ -1,4 +1,4 @@
-name: Build and test Android
+name: Build and test Android logo
 on:
   workflow_dispatch:
   push:
@@ -11,8 +11,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - name: Unpack game source
-        run: unzip -q android-project.zip
+      - name: Download updated project
+        run: |
+          curl --fail --location --silent --show-error 'https://share.zapia.com/2m5chwpnma5zj19pj87310' -o game.zip
+          unzip -q game.zip
+          test -f android-template/app/src/main/assets/www/assets/logo-caca-tesouro.png
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -23,19 +26,15 @@ jobs:
       - name: Build signed test APK
         working-directory: android-template
         run: gradle --no-daemon assembleRelease
-      - name: Validate APK signature and content
+      - name: Validate APK signature and logo content
         run: |
           APK=android-template/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           unzip -t "$APK" | tail -2
-          unzip -l "$APK" | grep 'assets/www/index.html'
+          unzip -l "$APK" | grep 'assets/www/assets/logo-caca-tesouro.png'
           "$ANDROID_HOME"/build-tools/35.0.0/apksigner verify --verbose "$APK"
           mkdir -p release
-          cp "$APK" release/Turma-da-Lume-Caca-ao-Tesouro.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: apk-lume
-          path: release/Turma-da-Lume-Caca-ao-Tesouro.apk
+          cp "$APK" release/Turma-da-Lume-Caca-ao-Tesouro-logo.apk
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -50,7 +49,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            adb install -r release/Turma-da-Lume-Caca-ao-Tesouro.apk
+            adb install -r release/Turma-da-Lume-Caca-ao-Tesouro-logo.apk
             adb shell am start -n com.turmadalume.cacatesouro/.MainActivity
             sleep 15
             adb shell pidof com.turmadalume.cacatesouro
@@ -61,5 +60,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-validation
+          name: lume-logo-check
           path: release/
