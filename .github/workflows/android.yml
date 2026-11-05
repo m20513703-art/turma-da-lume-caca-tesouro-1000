@@ -1,0 +1,65 @@
+name: Build and test Android
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack game source
+        run: unzip -q android-project.zip
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build signed test APK
+        working-directory: android-template
+        run: gradle --no-daemon assembleRelease
+      - name: Validate APK signature and content
+        run: |
+          APK=android-template/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -2
+          unzip -l "$APK" | grep 'assets/www/index.html'
+          "$ANDROID_HOME"/build-tools/35.0.0/apksigner verify --verbose "$APK"
+          mkdir -p release
+          cp "$APK" release/Turma-da-Lume-Caca-ao-Tesouro.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-lume
+          path: release/Turma-da-Lume-Caca-ao-Tesouro.apk
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch APK on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install -r release/Turma-da-Lume-Caca-ao-Tesouro.apk
+            adb shell am start -n com.turmadalume.cacatesouro/.MainActivity
+            sleep 15
+            adb shell pidof com.turmadalume.cacatesouro
+            adb shell uiautomator dump /sdcard/window.xml
+            adb pull /sdcard/window.xml release/window.xml
+            grep -q 'Turma da Lume' release/window.xml
+            adb exec-out screencap -p > release/screen.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-validation
+          path: release/
