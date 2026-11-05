@@ -1,4 +1,4 @@
-name: Build and test Android logo
+name: Build and test Android phase map
 on:
   workflow_dispatch:
   push:
@@ -13,11 +13,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Download updated project
         run: |
-          curl --fail --location --silent --show-error 'https://share.zapia.com/qi76s3lfajj04110r2f1z3' -o game.zip
+          curl --fail --location --silent --show-error 'https://share.zapia.com/racqfxod9e8nvxlnpf2hwm' -o game.zip
           unzip -q game.zip
-          grep -q 'class="hero-logo"' android-template/app/src/main/assets/www/index.html
-          test -f android-template/app/src/main/assets/www/assets/logo-caca-tesouro.png
-          test -f android-template/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          grep -q 'id="phaseGrid"' android-template/app/src/main/assets/www/index.html
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -28,21 +26,21 @@ jobs:
       - name: Build signed test APK
         working-directory: android-template
         run: gradle --no-daemon assembleRelease
-      - name: Validate APK signature and logo content
+      - name: Validate APK signature and contents
         run: |
           APK=android-template/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           unzip -t "$APK" | tail -2
-          unzip -l "$APK" | grep 'assets/www/assets/logo-caca-tesouro.png'
+          unzip -p "$APK" assets/www/index.html | grep -q 'id="phaseGrid"'
           "$ANDROID_HOME"/build-tools/35.0.0/apksigner verify --verbose "$APK"
           mkdir -p release
-          cp "$APK" release/Turma-da-Lume-Caca-ao-Tesouro-logo.apk
+          cp "$APK" release/Turma-da-Lume-mapa-fases.apk
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Launch APK on Android emulator
+      - name: Launch and test phase map
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -51,16 +49,23 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            adb install -r release/Turma-da-Lume-Caca-ao-Tesouro-logo.apk
+            adb install -r release/Turma-da-Lume-mapa-fases.apk
             adb shell am start -n com.turmadalume.cacatesouro/.MainActivity
-            sleep 45
+            sleep 40
             adb shell pidof com.turmadalume.cacatesouro
-            adb exec-out screencap -p > release/screen.png
-            adb shell uiautomator dump /sdcard/window.xml
-            adb pull /sdcard/window.xml release/window.xml
-            grep -q 'Turma da Lume' release/window.xml
+            adb shell input swipe 160 560 160 280 400
+            sleep 2
+            adb shell uiautomator dump /sdcard/start.xml
+            adb pull /sdcard/start.xml release/start.xml
+            python3 -c "import xml.etree.ElementTree as E,re,subprocess; r=E.parse('release/start.xml'); b=next(n.get('bounds') for n in r.iter('node') if 'Ver fases' in (n.get('text') or '')); x1,y1,x2,y2=map(int,re.findall(r'\d+',b));subprocess.run(['adb','shell','input','tap',str((x1+x2)//2),str((y1+y2)//2)],check=True)"
+            sleep 5
+            adb exec-out screencap -p > release/mapa.png
+            adb shell uiautomator dump /sdcard/map.xml
+            adb pull /sdcard/map.xml release/map.xml
+            grep -q 'Mapa das fases' release/map.xml
+            grep -q '1.000' release/map.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: lume-logo-check-v3
+          name: lume-mapa-check
           path: release/
