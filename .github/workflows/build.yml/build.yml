@@ -1,0 +1,46 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
+      - name: Unpack Android project
+        run: unzip -q src/android-project.zip -d src
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build signed release APK
+        working-directory: src/android-template
+        run: gradle --no-daemon assembleRelease
+      - name: Verify and stage APK
+        run: |
+          APK=src/android-template/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          unzip -t "$APK" | tail -2
+          "$ANDROID_HOME"/build-tools/35.0.0/apksigner verify --verbose "$APK"
+          mkdir -p release
+          cp "$APK" release/Turma-da-Lume-Caca-ao-Tesouro.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turma-da-lume-caca-tesouro-apk
+          path: release/Turma-da-Lume-Caca-ao-Tesouro.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-v1.0
+          name: Turma da Lume — Caça ao Tesouro (1.000 fases)
+          files: release/Turma-da-Lume-Caca-ao-Tesouro.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
